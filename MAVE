@@ -1,0 +1,101 @@
+
+##########MAVE数值模拟
+library(MAVE)
+library(locfit)
+######1. d=1(例4.1)
+n<-10000;p<-10     ##n=10000,20000,50000;p=5,10
+d<-1;M<-100
+beta<-c(1,rep(0,p-1))
+H<-function(u,h) (15/16)*(1-(u/h))^2*(abs(u/h)<1)
+K<-function(v1,h) h^(-d)*H(v1,h)
+####B的估计误差;运算时间
+system.time(
+  for(j in 1:M){
+    x<-matrix(rnorm(n*p),n,p)
+    e<-0.2*runif(n,-1,1)
+    y<-2*cos(x[,1]+0.5)+e   
+    dr<-mave.compute(x,y,method="meanmave")
+    beta.hat<-dr$dir[[1]]
+    b.error[j]<-svd(tcrossprod(beta.hat)-tcrossprod(beta))$d[1]
+  }
+)
+mean(b.error);sd(b.error)
+
+######2. d=2(例4.2)
+n<-10000;p<-5    ##n=10000,20000,50000;p=5,10
+d<-2;M<-100
+beta1<-c(1,rep(0,p-1));beta2<-c(0,1,rep(0,p-2))
+beta<-cbind(beta1,beta2)
+H<-function(u,h) (15/16)*(1-(u/h))^2*(abs(u/h)<1)
+K<-function(v1,v2,h) h^(-d)*H(v1,h)*H(v2,h)
+####B的估计误差;运算时间
+b.error<-rep(0,M)
+system.time(
+  for(j in 1:M){
+    x<-matrix(rnorm(n*p),n,p)
+    e<-0.2*rnorm(n)
+    ##y<-x[,1]*(x[,1]+x[,2])+e   ##例4.2-1
+    y<-x[,1]+1/(0.5+(x[,2])^2)+e  ##例4.2-2
+    dr<-mave.compute(x,y,method="meanmave")
+    beta.hat<-dr$dir[[2]]
+    b.error[j]<-svd(tcrossprod(beta.hat)-tcrossprod(beta))$d[1]
+  }
+)
+mean(b.error);sd(b.error)
+
+######数据相关
+######3-1. d=2(模型7)
+n<-10000;p<-10   ##n=10000,20000,50000
+d<-2;M<-100
+beta1<-c(1,2,3,rep(0,p-3))/sqrt(14);beta2<-c(-2,1,0,1,rep(0,p-4))/sqrt(6)
+beta<-cbind(beta1,beta2)
+H<-function(u,h) (15/16)*(1-(u/h))^2*(abs(u/h)<1)
+K<-function(v1,v2,h) h^(-d)*H(v1,h)*H(v2,h)
+####B的估计误差;运算时间
+b.error<-rep(0,M)
+system.time(
+  for(j in 1:M){  
+    mean<-rep(0,p);mean
+    rou<-0.5
+    sig<-matrix(0,p,p)
+    for(s in 1:p){
+      for(k in 1:p){
+        sig[s,k]<-rou^{abs(s-k)}
+      }
+    }
+    x<-mvrnorm(n,mean,sig)
+    e<-0.5*rnorm(n)
+    y<-(x[,1]+2*x[,2]+3*x[,3])^2/14-2*x[,1]+x[,2]+x[,4]+e ##例4.4
+    dr<-mave.compute(x,y,method="meanmave")
+    beta.hat<-dr$dir[[d]]
+    b.error[j]<-svd(tcrossprod(beta.hat)-tcrossprod(beta))$d[1]
+  }
+)
+mean(b.error);sd(b.error)
+
+######3-2. d=3(模型8)
+n<-10000;p<-10     ##n=10000,20000,50000
+d<-3;M<-100
+beta1<-c(1,rep(0,p-1));beta2<-c(0,1,rep(0,p-2));beta3<-c(0,0,1,rep(0,p-3))
+beta<-cbind(beta1,beta2,beta3)
+####B的估计误差;运算时间
+b.error<-rep(0,M)
+system.time(
+  for(j in 1:M){  
+    mean<-rep(0,p);mean
+    rou<-0.5
+    sig<-matrix(0,p,p)
+    for(s in 1:p){
+      for(k in 1:p){
+        sig[s,k]<-rou^(abs(s-k))
+      }
+    }
+    x<-mvrnorm(n,mean,sig)
+    e<-0.2*rnorm(n)
+    y<-x[,1]+x[,2]/((x[,3]+1.5)^2+0.5)+e   ##例4.5
+    dr<-mave.compute(x,y,method="meanmave")
+    beta.hat<-dr$dir[[d]]
+    b.error[j]<-svd(tcrossprod(beta.hat)-tcrossprod(beta))$d[1]
+  }
+)
+mean(b.error);sd(b.error)
