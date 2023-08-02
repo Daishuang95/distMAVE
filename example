@@ -1,0 +1,419 @@
+##########distMAVE数值模拟
+######1. d=1(例4.1)
+library(MAVE)
+library(locfit)
+n<-100;m<-100;N<-n*m
+p<-5;d<-1
+M<-100
+label<-sample(1:N)
+beta<-c(1,rep(0,p-1))
+H<-function(u,h) (15/16)*(1-(u/h))^2*(abs(u/h)<1)
+K<-function(v1,h) h^(-d)*H(v1,h)
+####B和y的估计误差;运行时间
+b.error<-rep(0,M)
+gy.error<-rep(0,M)
+system.time(
+for(j in 1:M){ 
+  x<-matrix(rnorm(N*p),N,p)
+  e<-0.2*runif(N,-1,1)
+  y<-2*cos(x[,1]+0.5)+e
+  ####B的估计误差
+  dr.group<-matrix(0,p,p)
+  for(k in 1:m){
+    c<-label[(n*(k-1)+1):(n*k)]
+    x.group<-x[c,]
+    y.group<-matrix(y[c])
+    dr<-mave.compute(x.group,y.group,method="meanmave")
+    dr.group<-tcrossprod(dr$dir[[1]])+dr.group
+  }
+  beta.hat<-eigen(dr.group/m)$vector[,1]
+  b.error[j]<-svd(tcrossprod(beta.hat)-tcrossprod(beta))$d[1]
+  ####y的估计误差
+  x.data<-matrix(x[c]);y.data<-matrix(y[c])
+  x.hat<-x.data%*%beta.hat          ##降维后的数据矩阵
+  s<-diag(rep(1,2))/n^3 
+  h<-kdeb(y.data,h0=0.01*sd(y.data),h1=sd(y.data),meth="LSCV")
+  D<-function(u01){
+    u1<-rep(0,n)
+    for(i in 1:n){
+      u1[i]<-x.hat[i]-u01
+    }
+    du<-cbind(1,u1)
+    return(du)
+  }
+  W<-function(u01){
+    wl<-c()
+    for(i in 1:n){
+      wl[i]<-K(x.hat[i]-u01,h)
+    }
+    return(diag(wl))
+  }   
+  y.hat<-rep(0,n)
+  for(i in 1:n){
+    P1<-t(D(x.hat[i]))%*%W(x.hat[i])%*%D(x.hat[i])
+    if (abs(det(P1)<1e-8)) P1<-P1+s  
+    y.hat[i]<-c(1,0)%*%solve(P1)%*%t(D(x.hat[i]))%*%W(x.hat[i])%*%y.data
+  }
+  gy.error[j]<-mean((y.hat-y.data)^2)  
+}
+)
+mean(b.error);sd(b.error)
+mean(gy.error);sd(gy.error) 
+
+
+######2. d=2(例4.2)
+library(MAVE)
+library(locfit)
+n<-100;m<-100;N<-n*m
+p<-5;d<-2
+M<-100
+label<-sample(1:N)
+beta1<-c(1,rep(0,p-1));beta2<-c(0,1,rep(0,p-2))
+beta<-cbind(beta1,beta2)
+H<-function(u,h) (15/16)*(1-(u/h))^2*(abs(u/h)<1)
+K<-function(v1,v2,h) h^(-d)*H(v1,h)*H(v2,h)
+b.error<-rep(0,M)
+gy.error<-rep(0,M)
+####B和y的估计误差;运行时间
+system.time(
+for(j in 1:M){
+  x<-matrix(rnorm(N*p),N,p)
+  e<-0.2*rnorm(N)
+  ##y<-x[,1]*(x[,1]+x[,2])+e   ##例4.2-1
+  y<-x[,1]+1/(0.5+(x[,2])^2)+e  ##例4.2-2
+  ####B的估计误差
+  dr.group<-matrix(0,p,p)
+  for(k in 1:m){
+    c<-label[(n*(k-1)+1):(n*k)]
+    x.group<-x[c,]
+    y.group<-matrix(y[c])
+    dr<-mave.compute(x.group,y.group,method="meanmave")
+    dr.group<-tcrossprod(dr$dir[[2]])+dr.group
+  }
+  beta.hat<-eigen(dr.group/m)$vector[,1:2]
+  b.error[j]<-svd(tcrossprod(beta.hat)-tcrossprod(beta))$d[1]
+  ####y的估计误差
+  x.data<-x[c,];y.data<-matrix(y[c])
+  x.hat<-x.data%*%beta.hat          ##降维后的数据矩阵
+  s<-diag(rep(1,3))/n^3 
+  h<-kdeb(y.data,h0=0.01*sd(y.data),h1=sd(y.data),meth="LSCV")
+  D<-function(u01,u02){
+    u1<-rep(0,n)
+    u2<-rep(0,n)
+    for(i in 1:n){
+      u1[i]<-x.hat[i,1]-u01
+      u2[i]<-x.hat[i,2]-u02
+    }
+    du<-cbind(1,u1,u2)
+    return(du)
+  }
+  W<-function(u01,u02){
+    wl<-c()
+    for(i in 1:n){
+      wl[i]<-K(x.hat[i,1]-u01,x.hat[i,2]-u02,h)
+    }
+    return(diag(wl))
+  }   
+  y.hat<-rep(0,n)
+  for(i in 1:n){
+    P1<-t(D(x.hat[i,1],x.hat[i,2]))%*%W(x.hat[i,1],x.hat[i,2])%*%
+      D(x.hat[i,1],x.hat[i,2])
+    if (abs(det(P1)<1e-8)) P1<-P1+s  
+    y.hat[i]<-c(1,0,0)%*%solve(P1)%*%t(D(x.hat[i,1],x.hat[i,2]))%*%
+      W(x.hat[i,1],x.hat[i,2])%*%y.data
+  }
+  gy.error[j]<-mean((y.hat-y.data)^2)  
+}
+)
+mean(b.error);sd(b.error)
+mean(gy.error);sd(gy.error) 
+
+######3-1.d=2数值结果:X数据间相关(模型7)
+library(MAVE)
+library(locfit)
+library(MASS)
+n<-100;m<-100;N<-n*m
+p<-10;d<-2
+M<-100
+label<-sample(1:N)
+beta1<-c(1,2,3,rep(0,p-3))/sqrt(14);beta2<-c(-2,1,0,1,rep(0,p-4))/sqrt(6)
+beta<-cbind(beta1,beta2)
+H<-function(u,h) (15/16)*(1-(u/h))^2*(abs(u/h)<1)
+K<-function(v1,v2,h) h^(-d)*H(v1,h)*H(v2,h)
+b.error<-rep(0,M)
+gy.error<-rep(0,M)
+####B和y的估计误差;运行时间
+system.time(
+  for(j in 1:M){
+    mean<-rep(0,p);mean
+    rou<-0.5
+    sig<-matrix(0,p,p)
+    for(s in 1:p){
+      for(k in 1:p){
+        sig[s,k]<-rou^{abs(s-k)}
+      }
+    } 
+    x<-mvrnorm(N,mean,sig)
+    e<-rnorm(N)
+    y<-(x[,1]+2*x[,2]+3*x[,3])^2/14-2*x[,1]+x[,2]+x[,4]+0.5*e  ##例4.4 
+    ####B的估计误差
+    dr.group<-matrix(0,p,p)
+    for(k in 1:m){
+      c<-label[(n*(k-1)+1):(n*k)]
+      x.group<-x[c,]
+      y.group<-matrix(y[c])
+      dr<-mave.compute(x.group,y.group,method="meanmave")
+      dr.group<-tcrossprod(dr$dir[[d]])+dr.group
+    }
+    beta.hat<-eigen(dr.group/m)$vector[,1:d]
+    b.error[j]<-svd(tcrossprod(beta.hat)-tcrossprod(beta))$d[1]
+    ####y的估计误差
+    x.data<-x[c,];y.data<-matrix(y[c])
+    x.hat<-x.data%*%beta.hat          ##降维后的数据矩阵
+    s<-diag(rep(1,3))/n^3 
+    h<-kdeb(y.data,h0=0.01*sd(y.data),h1=sd(y.data),meth="LSCV")-2
+    D<-function(u01,u02){
+      u1<-rep(0,n)
+      u2<-rep(0,n)
+      for(i in 1:n){
+        u1[i]<-x.hat[i,1]-u01
+        u2[i]<-x.hat[i,2]-u02
+      }
+      du<-cbind(1,u1,u2)
+      return(du)
+    } 
+    W<-function(u01,u02){
+      wl<-c()
+      for(i in 1:n){
+        wl[i]<-K(x.hat[i,1]-u01,x.hat[i,2]-u02,h)
+      }
+      return(diag(wl))
+    }   
+    y.hat<-rep(0,n)
+    for(i in 1:n){
+      P1<-t(D(x.hat[i,1],x.hat[i,2]))%*%W(x.hat[i,1],x.hat[i,2])%*%
+        D(x.hat[i,1],x.hat[i,2])
+      if (abs(det(P1)<1e-8)) P1<-P1+s  
+      y.hat[i]<-c(1,0,0)%*%solve(P1)%*%t(D(x.hat[i,1],x.hat[i,2]))%*%
+        W(x.hat[i,1],x.hat[i,2])%*%y.data
+    }
+    gy.error[j]<-mean((y.hat-y.data)^2)  
+  }
+)
+mean(b.error);sd(b.error)
+mean(gy.error);sd(gy.error) 
+
+######3-2.d=3数值结果:X数据间相关(模型8)
+library(MAVE)
+library(locfit)
+library(MASS)
+n<-100;m<-100;N<-n*m
+p<-10;d<-3
+M<-100
+label<-sample(1:N)
+beta1<-c(1,rep(0,p-1));beta2<-c(0,1,rep(0,p-2));beta3<-c(0,0,1,rep(0,p-3))
+beta<-cbind(beta1,beta2,beta3)
+H<-function(u,h) (15/16)*(1-(u/h))^2*(abs(u/h)<1)
+K<-function(v1,v2,v3,h) h^(-d)*H(v1,h)*H(v2,h)*H(v3,h)
+b.error<-rep(0,M)
+gy.error<-rep(0,M)
+####B和y的估计误差;运行时间
+system.time(
+  for(j in 1:M){
+    mean<-rep(0,p);mean
+    rou<-0.5
+    sig<-matrix(0,p,p)
+    for(s in 1:p){
+      for(k in 1:p){
+        sig[s,k]<-rou^{abs(s-k)}
+      }
+    }
+    x<-mvrnorm(N,mean,sig)
+    e<-0.2*rnorm(N)
+    y<-x[,1]+x[,2]/((x[,3]+1.5)^2+0.5)+e   ##例4.5
+    ####B的估计误差
+    dr.group<-matrix(0,p,p)
+    for(k in 1:m){
+      c<-label[(n*(k-1)+1):(n*k)]
+      x.group<-x[c,]
+      y.group<-matrix(y[c])
+      dr<-mave.compute(x.group,y.group,method="meanmave")
+      dr.group<-tcrossprod(dr$dir[[d]])+dr.group
+    }
+    beta.hat<-eigen(dr.group/m)$vector[,1:d]
+    b.error[j]<-svd(tcrossprod(beta.hat)-tcrossprod(beta))$d[1]  
+    ####y的估计误差
+    x.data<-x[c,];y.data<-matrix(y[c])
+    x.hat<-x.data%*%beta.hat          ##降维后的数据矩阵
+    s<-diag(rep(1,4))/n^3 
+    h<-kdeb(y.data,h0=0.1*sd(y.data),h1=sd(y.data),meth="LSCV")
+    D<-function(u01,u02,u03){
+      u1<-rep(0,n)
+      u2<-rep(0,n)
+      u3<-rep(0,n)
+      for(i in 1:n){
+        u1[i]<-x.hat[i,1]-u01
+        u2[i]<-x.hat[i,2]-u02
+        u3[i]<-x.hat[i,3]-u03
+      }
+      du<-cbind(1,u1,u2,u3)
+      return(du)
+    }
+    W<-function(u01,u02,u03){
+      wl<-c()
+      for(i in 1:n){
+        wl[i]<-K(x.hat[i,1]-u01,x.hat[i,2]-u02,x.hat[i,3]-u03,h)
+      }
+      return(diag(wl))
+    }   
+    y.hat<-rep(0,n)
+    for(i in 1:n){
+      P1<-t(D(x.hat[i,1],x.hat[i,2],x.hat[i,3]))%*%
+        W(x.hat[i,1],x.hat[i,2],x.hat[i,3])%*%
+        D(x.hat[i,1],x.hat[i,2],x.hat[i,3])
+      if (abs(det(P1)<1e-8)) P1<-P1+s  
+      y.hat[i]<-c(1,0,0,0)%*%solve(P1)%*%
+        t(D(x.hat[i,1],x.hat[i,2],x.hat[i,3]))%*%
+        W(x.hat[i,1],x.hat[i,2],x.hat[i,3])%*%y.data
+    }
+    gy.error[j]<-mean((y.hat-y.data)^2)  
+  }
+)
+mean(b.error);sd(b.error)
+mean(gy.error);sd(gy.error) 
+
+######4.d=4(例4.4)
+library(MAVE)
+library(locfit)
+n<-100;m<-100;N<-n*m
+p<-10;d<-4
+M<-100
+label<-sample(1:N)
+beta1<-c(1,2,3,4,0,0,0,0,0,0)/sqrt(30);beta2<-c(-2,1,-4,3,1,2,0,0,0,0)/sqrt(35)
+beta3<-c(0,0,0,0,2,-1,2,1,2,1)/sqrt(15);beta4<-c(0,0,0,0,0,0,-1,-1,1,1)/2
+beta<-cbind(beta1,beta2,beta3,beta4)
+H<-function(u,h) (15/16)*(1-(u/h))^2*(abs(u/h)<1)
+K<-function(v1,v2,v3,v4,h) h^(-d)*H(v1,h)*H(v2,h)*H(v3,h)*H(v4,h)
+b.error<-rep(0,M)
+gy.error<-rep(0,M)
+####B和y的估计误差;运行时间
+system.time( 
+  for(j in 1:M){
+    ####B的估计误差
+    dr.group<-matrix(0,p,p)
+    x<-matrix(rnorm(N*p),N,p)
+    e<-0.2*runif(N,-1,1)
+    y<-(x%*%beta1)*((x%*%beta2)^2+0.5)+(x%*%beta3)*(x%*%beta4)+e
+    for(k in 1:m){
+      c<-label[(n*(k-1)+1):(n*k)]
+      x.group<-x[c,]
+      y.group<-matrix(y[c])
+      dr<-mave.compute(x.group,y.group,method="meanmave")
+      dr.group<-tcrossprod(dr$dir[[4]])+dr.group
+    }
+    beta.hat<-eigen(dr.group/m)$vector[,1:4]
+    b.error[j]<-svd(tcrossprod(beta.hat)-tcrossprod(beta))$d[1]
+    ####y的估计误差
+    x.data<-x[c,];y.data<-matrix(y[c])
+    x.hat<-x.data%*%beta.hat          ##降维后的数据矩阵
+    s<-diag(rep(1,5))/n^3 
+    h<-kdeb(y.data,h0=0.01*sd(y.data),h1=sd(y.data),meth="LSCV")
+    D<-function(u01,u02,u03,u04){
+      u1<-rep(0,n)
+      u2<-rep(0,n)
+      u3<-rep(0,n)
+      u4<-rep(0,n)
+      for(i in 1:n){
+        u1[i]<-x.hat[i,1]-u01
+        u2[i]<-x.hat[i,2]-u02
+        u3[i]<-x.hat[i,3]-u03
+        u4[i]<-x.hat[i,4]-u04
+      }
+      du<-cbind(1,u1,u2,u3,u4)
+      return(du)
+    }
+    W<-function(u01,u02,u03,u04){
+      wl<-c()
+      for(i in 1:n){
+        wl[i]<-K(x.hat[i,1]-u01,x.hat[i,2]-u02,x.hat[i,3]-u03,x.hat[i,4]-u04,h)
+      }
+      return(diag(wl))
+    }
+    y.hat<-rep(0,n)
+    for(i in 1:n){
+      P1<-t(D(x.hat[i,1],x.hat[i,2],x.hat[i,3],x.hat[i,4]))%*%
+        W(x.hat[i,1],x.hat[i,2],x.hat[i,3],x.hat[i,4])%*%
+        D(x.hat[i],x.hat[i,2],x.hat[i,3],x.hat[i,4])
+      if (abs(det(P1)<1e-8)) P1<-P1+s  
+      y.hat[i]<-c(1,0,0,0,0)%*%solve(P1)%*%
+        t(D(x.hat[i,1],x.hat[i,2],x.hat[i,3],x.hat[i,4]))%*%
+        W(x.hat[i,1],x.hat[i,2],x.hat[i,3],x.hat[i,4])%*%y.data
+    }
+    gy.error[j]<-mean((y.hat-y.data)^2)  
+  }
+)
+mean(b.error);sd(b.error)
+mean(gy.error);sd(gy.error)
+
+####绘图命令:n横坐标图, m为label图像
+##图1
+x<-c(50,100,200,500)
+y1<-c(0.0912,0.0532,0.0314,0.0187)
+y2<-c(0.0698,0.0380,0.0221,0.0139)
+y3<-c(0.0418,0.0237,0.0140,0.0085)
+plot(x,y1,type="b",pch=15,lwd=2,xaxt="n",ylim=c(0.01,0.1),
+     col="black",xlab="n",
+     ylab=expression(paste(Ave," ",of," ",the," ", estimation," ",error, " ", of," ",widehat(B),seq=" ")))
+axis(1,at=x,labels=x)
+lines(x,y2,lty=2,pch=16,lwd=2,col="blue")
+points(x,y2,pch=16,col="blue")
+lines(x,y3,lty=3,pch=17,lwd=3,col="red")
+points(x,y3,pch=17,col="red")
+title(main="",sub="(a)")
+text(55,0.0942,"200");text(120,0.0532,"100")
+text(215,0.0324,"50");text(500,0.0217,"20")
+text(55,0.0728,"400",col="blue");text(120,0.0390,"200",col="blue")
+text(215,0.0241,"100",col="blue");text(500,0.0163,"40",col="blue")
+text(60,0.0448,"1000",col="red");text(120,0.0247,"500",col="red")
+text(215,0.0165,"250",col="red");text(500,0.0115,"100",col="red")
+
+##图2
+x<-c(50,100,200,500)
+y1<-c(0.4147,0.2810,0.1587,0.0790)
+y2<-c(0.4305,0.2465,0.1570,0.0646)
+y3<-c(0.4261,0.2010,0.1063,0.0580)
+plot(x,y1,type="b",pch=15,lwd=2,xaxt="n",ylim=c(0,0.45),
+     col="black",xlab="n",
+     ylab=expression(paste(Ave," ",of," ",the," ", estimation," ",error, " ", of," ",widehat(g),seq=" ")))
+axis(1,at=x,labels=x)
+lines(x,y2,lty=2,pch=16,lwd=2,col="blue")
+points(x,y2,pch=16,col="blue")
+lines(x,y3,lty=3,pch=17,lwd=3,col="red")
+points(x,y3,pch=17,col="red")
+title(main="",sub="(b)")
+text(70,0.4147,"200");text(120,0.2810,"100")
+text(215,0.1687,"50");text(500,0.0950,"20")
+text(60,0.4455,"400",col="blue");text(100,0.2550,"200",col="blue")
+text(200,0.1450,"100",col="blue");text(510,0.0746,"40",col="blue")
+text(70,0.4300,"1000",col="red");text(100,0.1880,"500",col="red")
+text(200,0.0930,"250",col="red");text(495,0.0480,"100",col="red")
+
+##图3
+x<-c(50,100,200,500)
+y1<-c(4.75,17.44,36.32,89.12)
+y2<-c(4.77,17.06,38.95,89.15)
+y3<-c(5.89,16.35,41.81,102.72)
+plot(x,y1,type="b",pch=15,lwd=2,xaxt="n",ylim=c(0,103),
+     xlab="n",ylab=expression("Computation time"))
+axis(1,at=x,labels=x)
+lines(x,y2,lty=2,pch=16,lwd=2,col="blue")
+points(x,y2,pch=16,col="blue")
+lines(x,y3,lty=3,pch=17,lwd=3,col="red")
+points(x,y3,pch=17,col="red")
+title(main="",sub="(c)")
+text(59,2,"200");text(80,17,"100")
+text(200,32,"50");text(500,85,"20")
+text(70,5,"400",col="blue");text(100,21.5,"200",col="blue")
+text(220,41,"100",col="blue");text(500,92.5,"40",col="blue")
+text(52,9,"1000",col="red");text(100,13,"500",col="red")
+text(180,42,"250",col="red");text(485,103,"100",col="red")
